@@ -21,7 +21,53 @@
     var defaults = {
       refilterEvent: 'keyup',
       caseSensitive: false,
-      diacriticSensitive: false
+      diacriticSensitive: false,
+      fuzzy: true
+    };
+
+    // A polyfill for Object.assign
+    if (typeof Object.assign != 'function') {
+      Object.assign = function(target) {
+        'use strict';
+        if (target === undefined || target === null) {
+          throw new TypeError('Cannot convert undefined or null to object');
+        }
+
+        var output = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+          var source = arguments[index];
+          if (source !== undefined && source !== null) {
+            for (var nextKey in source) {
+              if (source.hasOwnProperty(nextKey)) {
+                output[nextKey] = source[nextKey];
+              }
+            }
+          }
+        }
+        return output;
+      };
+    }
+
+    // A polyfill for CustomEvent
+    if (typeof window.CustomEvent === 'function') {
+      function CustomEvent(event, params) {
+        params = params || { bubbles: false, cancelable: false, detail: undefined };
+        var evt = document.createEvent('CustomEvent');
+        evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
+        return evt;
+       }
+
+      CustomEvent.prototype = window.Event.prototype;
+
+      window.CustomEvent = CustomEvent;
+    }
+
+    // Events that can be called/listened to
+    var events = {
+      // This can be fired to filter the table
+      filter: new CustomEvent('filtie:filter'),
+      // This is fired after the table if filtered
+      afterFilter: new CustomEvent('filtie:afterFilter')
     };
 
     /**
@@ -43,6 +89,9 @@
       throw new Error('No tbody found in table');
     }
 
+    // Strip diacritics from a string
+    // Taken from http://jsperf.com/latinize, though I'm sure it was somewhere
+    // else before that
     function removeDiacritics(str) {
       var defaultDiacriticsRemovalMap = [
         {base: 'A', letters: /[\u0041\u24B6\uFF21\u00C0\u00C1\u00C2\u1EA6\u1EA4\u1EAA\u1EA8\u00C3\u0100\u0102\u1EB0\u1EAE\u1EB4\u1EB2\u0226\u01E0\u00C4\u01DE\u1EA2\u00C5\u01FA\u01CD\u0200\u0202\u1EA0\u1EAC\u1EB6\u1E00\u0104\u023A\u2C6F]/g},
@@ -138,29 +187,6 @@
       return str;
     }
 
-    // A polyfill for Object.assign
-    if (typeof Object.assign != 'function') {
-      Object.assign = function(target) {
-        'use strict';
-        if (target === undefined || target === null) {
-          throw new TypeError('Cannot convert undefined or null to object');
-        }
-
-        var output = Object(target);
-        for (var index = 1; index < arguments.length; index++) {
-          var source = arguments[index];
-          if (source !== undefined && source !== null) {
-            for (var nextKey in source) {
-              if (source.hasOwnProperty(nextKey)) {
-                output[nextKey] = source[nextKey];
-              }
-            }
-          }
-        }
-        return output;
-      };
-    }
-
     // The Filtie Instance. One of these is generated for each instance of
     // Filtie on the page.
     function FiltieInstance($table, options) {
@@ -173,22 +199,59 @@
       options = Object.assign({}, defaults, options);
 
       // Test whether a cell matches the filter
-      function testCell($cell, value) {
-        var cellValue = $cell.innerText;
+      function getFilterTest($filter) {
+        var value = $filter.value;
+        var regex = /^(>=?|<=?)\s*(-?[0-9.]+)?\s*$/;
+        var comparison;
 
-        // If not diacritic sensitive, remove all diacritics
-        if (!options.diacriticSensitive) {
-          cellValue = removeDiacritics(cellValue);
-          value = removeDiacritics(value);
+        if (options.fuzzy && regex.test(value)) {
+          var match = value.match(regex);
+          var num = parseFloat(match[2], 10);
+
+          if (isNaN(num)) {
+            comparison = function filterTestNull() {
+              return true;
+            }
+          } else if (match[1] === '>') {
+            comparison = function filterTestFuzzy(cellValue) {
+              return cellValue > num;
+            }
+          } else if (match[1] === '<') {
+            comparison = function filterTestFuzzy(cellValue) {
+              return cellValue < num;
+            }
+          } else if (match[1] === '>=') {
+            comparison = function filterTestFuzzy(cellValue) {
+              return cellValue >= num;
+            }
+          } else if (match[1] === '<=') {
+            comparison = function filterTestFuzzy(cellValue) {
+              return cellValue <= num;
+            }
+          }
+        } else {
+          comparison = function filterTestContains(cellValue, value) {
+            return cellValue.indexOf(value) > -1;
+          }
         }
 
-        // If not case sensitive, convert to lower case
-        if (!options.caseSensitive) {
-          cellValue = cellValue.toLowerCase();
-          value = value.toLowerCase();
-        }
+        return function($cell) {
+          var cellValue = $cell.innerText;
 
-        return cellValue.indexOf(value) > -1;
+          // If not diacritic sensitive, remove all diacritics
+          if (!options.diacriticSensitive) {
+            cellValue = removeDiacritics(cellValue);
+            value = removeDiacritics(value);
+          }
+
+          // If not case sensitive, convert to lower case
+          if (!options.caseSensitive) {
+            cellValue = cellValue.toLowerCase();
+            value = value.toLowerCase();
+          }
+
+          return comparison.call(this, cellValue, value);
+        }
       }
 
       // Show or hide a specified row
@@ -198,24 +261,46 @@
 
       // Show or hide rows in the table based on active filters
       function filterTable() {
+        var filterTests = [];
+
+        // Generate the filter test functions that we'll use
+        for (var t = 0, k = $$filters.length; t < k; t++) {
+          var $filter = $$filters[t];
+
+          if ($filter.value === '') continue;
+
+          filterTests.push({
+            column: t,
+            callback: getFilterTest($filter)
+          });
+        }
+
+        // Go through each row to see if it should be shown
         for (var i = 0, l = $$rows.length; i < l; i++) {
           var $row = $$rows[i];
           var isShown = true;
-          for (var t = 0, k = $$filters.length; t < k; t++) {
-            var $filter = $$filters[t];
+          for (var t = 0, k = filterTests.length; t < k; t++) {
+            var $cell = $row.children[filterTests[t].column];
             // Check that the row doesn't conflict with any filters
-            if ($filter.value !== '' && !testCell($row.children[t], $filter.value)) {
+            if (!filterTests[t].callback.call(this, $cell)) {
               isShown = false;
+              break;
             }
           }
+
           toggleRow($row, isShown);
         }
+
+        $table.dispatchEvent(events.afterFilter);
       }
 
       // Create a filter
       function buildFilterInput(offset) {
         var $filter = document.createElement('input');
         $filter.setAttribute('type', 'search');
+        $filter.style.width = '100%';
+
+        // Filter the table when the relevant event (default: onkeyup) is fired
         $filter.addEventListener(options.refilterEvent, filterTable);
         // The `search` event is fired when the little "x" is clicked on the field
         $filter.addEventListener('search', filterTable);
@@ -233,9 +318,9 @@
 
       // Create a cell containing a filter
       function buildFilterCell(offset) {
-        var $th = document.createElement('th');
-        $th.appendChild(buildFilterInput(offset));
-        return $th;
+        var $td = document.createElement('td');
+        $td.appendChild(buildFilterInput(offset));
+        return $td;
       }
 
       // Create a row of filters
@@ -248,11 +333,16 @@
         return $row;
       }
 
+      // When the table is asked to be filtered, filter it
+      $table.addEventListener('filtie:filter', function() {
+        filterTable();
+      });
+
       // Build the filter row and add it to the table
       var $row = buildFilterRow(getTableColumnCount($table));
-      var $filterHead = document.createElement('thead');
-      $filterHead.appendChild($row);
-      $table.insertBefore($filterHead, $tbody);
+      var $filterBody = document.createElement('tbody');
+      $filterBody.appendChild($row);
+      $table.insertBefore($filterBody, $tbody);
 
       // Set aria values for the table
       $table.setAttribute('aria-atomic', true);
@@ -295,6 +385,7 @@
      * Return public methods
      */
     return {
-        create: create
+        create: create,
+        events: events
     };
 }));
