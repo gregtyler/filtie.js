@@ -25,10 +25,10 @@ _TODO_
 
 ## Project goals
  - Simple and small
- - Internationalisation support
- - Accessible
+ - Immediate support for internationalisation
+ - Immediately accessible
  - No CSS, so it can work with other libraries (Bootstrap, Foundation etc.)
- - Available in jQuery, Zepto, underscore and Vanilla JS
+ - Uses only Vanilla JavaScript
  - Good browser support
 
 ## Compiling

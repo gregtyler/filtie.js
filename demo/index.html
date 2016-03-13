@@ -73,10 +73,13 @@
   <script>
     var $table = document.querySelector('table');
     Filtie.create($table);
+
+    // You can listen for filtering events
     $table.addEventListener('filtie:afterFilter', function() {
       console.log('It was just filtered');
     });
 
+    // And you can trigger events to filter the table manually
     document.querySelector('td:nth-child(3) > input').value = '2016';
     document.querySelector('table').dispatchEvent(Filtie.events.filter);
   </script>
