@@ -69,11 +69,16 @@
       </tr>
     </tbody>
   </table>
-  <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
   <script src="../build/filtie.min.js"></script>
   <script>
-    // Or use jQuery
-    $('table').filtie();
+    var $table = document.querySelector('table');
+    Filtie.create($table);
+    $table.addEventListener('filtie:afterFilter', function() {
+      console.log('It was just filtered');
+    });
+
+    document.querySelector('td:nth-child(3) > input').value = '2016';
+    document.querySelector('table').dispatchEvent(Filtie.events.filter);
   </script>
 </body>
 </html>
