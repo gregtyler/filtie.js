@@ -28,7 +28,6 @@
     // A polyfill for Object.assign
     if (typeof Object.assign != 'function') {
       Object.assign = function(target) {
-        'use strict';
         if (target === undefined || target === null) {
           throw new TypeError('Cannot convert undefined or null to object');
         }
@@ -49,17 +48,17 @@
     }
 
     // A polyfill for CustomEvent
+    function polyfillCustomEvent(event, params) {
+      params = params || { bubbles: false, cancelable: false, detail: undefined };
+      var evt = document.createEvent('CustomEvent');
+      evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
+      return evt;
+    }
+
     if (typeof window.CustomEvent === 'function') {
-      function CustomEvent(event, params) {
-        params = params || { bubbles: false, cancelable: false, detail: undefined };
-        var evt = document.createEvent('CustomEvent');
-        evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
-        return evt;
-       }
+      polyfillCustomEvent.prototype = window.Event.prototype;
 
-      CustomEvent.prototype = window.Event.prototype;
-
-      window.CustomEvent = CustomEvent;
+      window.CustomEvent = polyfillCustomEvent;
     }
 
     // Events that can be called/listened to
@@ -236,7 +235,7 @@
         }
 
         return function($cell) {
-          var cellValue = $cell.innerText;
+          var cellValue = $cell.textContent;
 
           // If not diacritic sensitive, remove all diacritics
           if (!options.diacriticSensitive) {
@@ -353,33 +352,6 @@
     function create($table, options) {
       return new FiltieInstance($table);
     }
-
-    /**
-     * Attach functionality to the supplied jQuery object
-     */
-    function attachTojQuery(jQuery, method) {
-        // Default object to global jQuery
-        if (typeof jQuery === 'undefined') jQuery = window.jQuery;
-        // Default method to "filtie"
-        if (typeof method === 'undefined') method = 'filtie';
-
-        // Not valid jQuery object
-        if (typeof jQuery !== 'function' || typeof $().jquery !== 'string') {
-            console.error('Invalid jQuery object supplied');
-            return false;
-        }
-
-        // Add filtie to jQuery under the specified method
-        jQuery.fn[method] = function(options) {
-            var args = Array.prototype.slice.apply(arguments);
-
-            return $(this).each(function() {
-                create(this, options);
-            });
-        }
-    }
-
-    attachTojQuery();
 
     /**
      * Return public methods
