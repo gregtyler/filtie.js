@@ -9,7 +9,7 @@ If you download the repository, you'll find the ready-to-use JavaScript source i
 ```html
 <script src="[...]/filtie.min.js"></script>
 <script type="text/javascript">
-Filtie.create(document.getElementById('tableToSort'));
+Filtie.create(document.getElementById('tableToFilter'));
 </script>
 ```
 
