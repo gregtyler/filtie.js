@@ -65,7 +65,7 @@
     var events = {
       // This can be fired to filter the table
       filter: new CustomEvent('filtie:filter'),
-      // This is fired after the table if filtered
+      // This is fired after the table is filtered
       afterFilter: new CustomEvent('filtie:afterFilter')
     };
 
